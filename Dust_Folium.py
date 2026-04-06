@@ -110,7 +110,7 @@ folium.TileLayer(
 try:
     # 1. Load the live URL from the State of Colorado
     # PASTE YOUR DIRECT ZIP LINK HERE
-    cdss_url = "PASTE_YOUR_CDSS_LINK_HERE" 
+    cdss_url = "https://dnrftp.state.co.us/?u=anonymous&p=anonymous&path=/CDSS/GIS/All_River_Basins.zip" 
     
     basins = gpd.read_file(cdss_url)
     basins = basins.to_crs(epsg=4326)

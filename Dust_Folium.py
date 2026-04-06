@@ -69,8 +69,9 @@ folium.TileLayer(
 
 # --- 5.5 Add the River Basins Shapefile ---
 try:
-    # Load the shapefile using Geopandas
-    basins = gpd.read_file("All_River_Basins.shp")
+    # Tell Geopandas to read directly inside the zipped folder
+    basins = gpd.read_file("zip://All_River_Basins.zip")
+    
     # Convert to the standard web map coordinate system (WGS84)
     basins = basins.to_crs(epsg=4326)
     
@@ -82,7 +83,7 @@ try:
             'fillColor': '#3186cc',
             'color': '#3186cc',
             'weight': 1.5,
-            'fillOpacity': 0.15 # Keep it slightly transparent so you can see the imagery
+            'fillOpacity': 0.15 
         }
     ).add_to(m)
 except Exception as e:

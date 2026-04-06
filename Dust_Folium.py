@@ -67,18 +67,21 @@ folium.TileLayer(
     control=True
 ).add_to(m)
 
-# --- 5.5 Add the River Basins Shapefile ---
+# --- 5.5 Add the River Basins Shapefile from CDSS ---
 try:
-    # Tell Geopandas to read directly inside the zipped folder
-    basins = gpd.read_file("zip://All_River_Basins.zip")
+    # 1. Define the live URL from the State of Colorado (CDSS)
+    cdss_url = "https://dnrftp.state.co.us/?u=anonymous&p=anonymous&path=/CDSS/GIS/All_River_Basins.zip"
     
-    # Convert to the standard web map coordinate system (WGS84)
+    # 2. Tell Geopandas to read the zipped shapefile directly from the internet!
+    basins = gpd.read_file(cdss_url)
+    
+    # 3. Convert to the standard web map coordinate system (WGS84)
     basins = basins.to_crs(epsg=4326)
     
-    # Add to the Folium map
+    # 4. Add to the Folium map
     folium.GeoJson(
         basins,
-        name="Colorado River Basins",
+        name="Major River Basins",
         style_function=lambda feature: {
             'fillColor': '#3186cc',
             'color': '#3186cc',
@@ -87,7 +90,7 @@ try:
         }
     ).add_to(m)
 except Exception as e:
-    st.error(f"Could not load River Basins: {e}")
+    st.error(f"Could not load River Basins from CDSS: {e}")
 
 # Add our dynamic station markers to the map
 for idx, row in df.iterrows():

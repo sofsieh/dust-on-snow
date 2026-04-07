@@ -199,3 +199,22 @@ if df_live is not None and not df_live.empty:
     st.dataframe(df_live[['datetime', 'SW_in', 'albedo', 'Cd_backtracked', 'empirical_albedo', 'Qm_melt']].tail(10))
 else:
     st.error("No valid data returned from the API for this timeframe or station.")
+    st.markdown("---")
+    st.write("**Recent 7-Day Trend (Filtered Data)**")
+    
+    # Show the raw data table
+    st.dataframe(df_live[['datetime', 'SW_in', 'albedo', 'Cd_backtracked', 'empirical_albedo', 'Qm_melt']].tail(10))
+    
+    # ---------------- NEW CHART CODE ----------------
+    st.markdown("---")
+    st.subheader("7-Day Dust Accumulation Trend")
+    
+    # Streamlit line charts work best when the x-axis is the dataframe index
+    chart_data = df_live[['datetime', 'Cd_backtracked']].copy()
+    chart_data.set_index('datetime', inplace=True)
+    
+    # Draw the chart
+    st.line_chart(chart_data, color="#ff4b4b") 
+    # ------------------------------------------------
+else:
+    st.error("No valid data returned from the API for this timeframe or station.")

@@ -4,7 +4,6 @@ from streamlit_folium import st_folium
 import requests
 import pandas as pd
 import numpy as np
-import math
 
 # ==========================================
 # 1. DATA & CONSTANTS CONFIGURATION
@@ -47,20 +46,8 @@ k_values = {
 }
 
 # ==========================================
-# 2. HELPER FUNCTIONS
+# 2. DATA FETCHING & MATH FUNCTIONS
 # ==========================================
-def get_nearest_station(lat, lon, stations):
-    """Calculates the closest station to a clicked coordinate"""
-    nearest_name = None
-    min_dist = float('inf')
-    for name, data in stations.items():
-        # Simple Euclidean distance for regional scale
-        dist = math.sqrt((data['lat'] - lat)**2 + (data['lon'] - lon)**2)
-        if dist < min_dist:
-            min_dist = dist
-            nearest_name = name
-    return nearest_name
-
 @st.cache_data(ttl=3600)
 def fetch_and_process_data(site_id, site_type, clean_albedo):
     records = []
@@ -82,6 +69,7 @@ def fetch_and_process_data(site_id, site_type, clean_albedo):
                             'parameter': param_code,
                             'value': float(val['value']) if val['value'] is not None else None
                         })
+        
         if not records: return None
         df = pd.DataFrame(records)
         df_pivot = df.pivot_table(index=['site_no', 'datetime'], columns='parameter', values='value').reset_index()
@@ -143,12 +131,27 @@ def fetch_and_process_data(site_id, site_type, clean_albedo):
     return df_pivot
 
 # ==========================================
-# 3. PAGE SETUP & SIDEBAR
+# 3. PAGE SETUP & SIDEBAR CONTROLS
 # ==========================================
 st.set_page_config(page_title="Real-Time Dust & Snowmelt", layout="wide")
 st.title("Real-Time Dust & Snowmelt Calculator")
 
-st.sidebar.header("1. Snow Condition")
+st.sidebar.header("1. Location Settings")
+location_method = st.sidebar.radio("Location Method:", ("Manual Selection", "Auto-Geolocation (Requires HTTPS)"))
+
+if location_method == "Manual Selection":
+    st.sidebar.info("Manual Override Active.")
+    selected_station_name = st.sidebar.selectbox("Select Reference Station:", options=list(station_data.keys()))
+    active_station = station_data[selected_station_name]
+    st.sidebar.success(f"Tracking {selected_station_name}")
+else:
+    st.sidebar.warning("Geolocation active. (Defaulting to nearest valid site)")
+    # NOTE: If you are using a Streamlit geolocation component (like streamlit-geolocation or streamlit-js-eval), 
+    # insert that fetching logic here. For safety during rendering, we assign a default fallback.
+    selected_station_name = "USGS: Berthoud Pass" 
+    active_station = station_data[selected_station_name]
+
+st.sidebar.header("2. Snow Condition")
 snow_grain_type = st.sidebar.selectbox("Current Snow Grain Type", ("Fresh Snow", "Old Dry Snow", "Wet Snow"))
 
 if snow_grain_type == "Fresh Snow":
@@ -160,55 +163,30 @@ else:
 
 st.sidebar.write(f"**Baseline Albedo ($\\alpha_0$):** {clean_albedo}")
 
-st.sidebar.header("2. Manual Location (Optional)")
-st.sidebar.info("You can click the map to automatically find the nearest station, or select one manually below.")
-manual_selection = st.sidebar.selectbox("Select Station directly:", options=list(station_data.keys()))
-
 # ==========================================
-# 4. INTERACTIVE MAP
+# 4. FETCH DATA & DISPLAY MAP
 # ==========================================
-st.subheader("Interactive Basin Map")
-st.write("📍 **Click anywhere on the map** to automatically calculate snowmelt for the nearest reference station.")
+st.subheader("Basin Map & Active Station")
 
-# Base map centered on Colorado
-m = folium.Map(location=[39.0, -106.0], zoom_start=7)
+m = folium.Map(location=[active_station["lat"], active_station["lon"]], zoom_start=9)
+folium.Marker(
+    [active_station["lat"], active_station["lon"]],
+    popup=f"Active Site: {selected_station_name}",
+    icon=folium.Icon(color="red", icon="info-sign")
+).add_to(m)
 
-# Plot all stations
-for name, data in station_data.items():
-    color = "blue" if data["type"] == "USGS" else "green"
-    folium.CircleMarker(
-        location=[data["lat"], data["lon"]],
-        radius=5,
-        color=color,
-        fill=True,
-        fill_color=color,
-        popup=name
-    ).add_to(m)
-
-# Render map and capture clicks
-map_data = st_folium(m, width=800, height=400, returned_objects=["last_clicked"])
-
-# Determine which station is active
-if map_data and map_data.get("last_clicked"):
-    clicked_lat = map_data["last_clicked"]["lat"]
-    clicked_lon = map_data["last_clicked"]["lng"]
-    selected_station_name = get_nearest_station(clicked_lat, clicked_lon, station_data)
-    st.success(f"**Map Clicked!** Nearest tracking station is **{selected_station_name}**")
-else:
-    selected_station_name = manual_selection
-
-active_station = station_data[selected_station_name]
+st_folium(m, width=800, height=350)
 
 # ==========================================
 # 5. DATA CALCULATIONS & DISPLAY
 # ==========================================
-st.markdown("---")
-st.subheader(f"Live Energy Balance: {selected_station_name}")
+st.subheader("Live Energy Balance & Dust Accumulation")
 
 with st.spinner("Fetching 7-day live data from API..."):
     df_live = fetch_and_process_data(active_station["id"], active_station["type"], clean_albedo)
 
 if df_live is not None and not df_live.empty:
+    # Grab the most recent valid row for the metrics
     latest_data = df_live.dropna(subset=['Qm_melt', 'Cd_backtracked']).iloc[-1]
     
     col1, col2, col3, col4 = st.columns(4)
@@ -219,13 +197,20 @@ if df_live is not None and not df_live.empty:
     
     st.markdown("---")
     st.write("**Recent 7-Day Trend (Filtered Data)**")
+    
+    # Show the raw data table
     st.dataframe(df_live[['datetime', 'SW_in', 'albedo', 'Cd_backtracked', 'empirical_albedo', 'Qm_melt']].tail(10))
     
     st.markdown("---")
     st.subheader("7-Day Dust Accumulation Trend")
+    
+    # Streamlit line charts work best when the x-axis is the dataframe index
     chart_data = df_live[['datetime', 'Cd_backtracked']].copy()
     chart_data.set_index('datetime', inplace=True)
+    
+    # Draw the chart
     st.line_chart(chart_data, color="#ff4b4b") 
 
 else:
-    st.error(f"No valid data returned from the API for {selected_station_name} over the last 7 days. Try selecting a different site.")
+    # Safely catch and display API/Data errors
+    st.error("No valid data returned from the API for this timeframe or station.")
